@@ -1,0 +1,7 @@
+[DEFAULT]
+Fave_Number = 9
+Cut = OFF
+Isothermal = OFF
+
+[section_2]
+Test_Section_2 = Kammy
