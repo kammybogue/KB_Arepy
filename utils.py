@@ -36,7 +36,7 @@ uparsec=ulength/3.0856e18
 
 def load_data(base, filenum, ABHE=0.1, read_snap=True):
     """ Loads projection images of a given snapshot """
-    ABHE = ABHE
+    
     ColumnDensity = rsnap.read_image(base + 'density_proj_' + filenum)
     xHp_proj = rsnap.read_image(base + 'xHP_proj_' + filenum)
     xH2_proj = rsnap.read_image(base + 'xH2_proj_' + filenum)
@@ -82,10 +82,42 @@ def load_data(base, filenum, ABHE=0.1, read_snap=True):
         return Ndensity, B_field, xHp_proj, xH2_proj, NH
 
 
-def load_snap_data(base, filenum, ABHE=0.1, xHe=0.1, mp = 1.6726231e-24, kb = 1.3806485e-16):
-    """ Loads snapshot data of a given snapshot, not the projections """
-    ABHE = 0.1
+def load_snap_data(base, filenum, ABHE=0.1, xHe=0.1, mp=1.6726231e-24, kb=1.3806485e-16, **kwargs): 
+    """ 
+    Loads snapshot data from a specified file, doesn't load the projections.
+
+    Parameters:
+    - base (str): The base path to the snapshot files.
+    - filenum (str): The snapshot number to load.
+    - ABHE (float, optional): The abundance of helium in the system. Default is 0.1.
+    - xHe (float, optional): The
+    - mp (float, optional): The proton mass in grams. Default is 1.6726231e-24.
+    - kb (float, optional): The Boltzmann constant in erg per Kelvin. Default is 1.3806485e-16.
+    - **kwargs: Additional keyword arguments for future expansion.
+
+    Returns:
+    - mass (array): Array containing masses of particles in the snapshot.
+    - pos (array): Array containing positions of particles in the snapshot.
+    - rho (array): Array containing densities of particles in the snapshot.
+    - bfield (array): Array containing magnetic field of particles in the snapshot.
+    - yn (array): Array containing number densities of particles in the snapshot.
+    - T (array): Array containing temperatures of particles in the snapshot.
+    - vels (array): Array containing velocities of particles in the snapshot.
+    - chem (array): Array containing chemical abundances of particles in the snapshot.
+    - time (float): The physical time of the snapshot.
+    
+    """
+
+    # Begin the data load in
     f = base + 'snap_' + filenum +'.hdf5'
+    
+    print("loading data from;",f)
+    
+    # Print used kwarg values
+    print("using ABHE = ", ABHE)
+    print("using xHe = ", xHe)
+    #print("using mp = ", mp) #these should not change
+    #print("using kb = ", kb)
 
     rsnap.io_flags['variable_metallicity'] = False
     rsnap.io_flags['time_steps'] = True
@@ -786,116 +818,6 @@ def calculate_sfr_with_pos(base, number, young_sinks_only=False, sink_age_thresh
         kpc_accreted_sinks = (accreted_sinks_positions - 500) / 10.
 
         # Combine positions and SFR values for new and accreted sinks into a 2D array
-        SFR_positions_new_and_accreted = np.column_stack((kpc_new_sinks, kpc_accreted_sinks))
-        SFR_new_and_accreted = np.column_stack((SFR_new_sinks, SFR_accreted_sinks))
-
-        # Combine the two sets of positions and SFR values
-        #SFR_pos_combined = np.vstack((SFR_pos_new, SFR_pos_accreted))
-        
-        return SFR_new_and_accreted, SFR_positions_new_and_accreted
-    
-    else:
-        print('No stars formed yet! Choose a later snapshot')
-
-
-'''
-def calculate_sfr_with_pos(base, number, young_sinks_only=False, sink_age_threshold=4, SFE=0.05, center=[500,500,500], cut_R_inner=0, cut_R_outer=100, cut_z=5, **kwargs):
-
-    t0 = number
-    filenum_t0 = str(t0).zfill(3)
-    
-    f_t0 = base + 'snap_' + str(filenum_t0) + '.hdf5'
-    print(f_t0)
-
-    output_t0 = rsnap.read_snapshot_hdf5(f_t0)
-    if len(output_t0) > 2:
-
-        #data load in for time 0
-        data_t0, header_t0, sink_data_t0 = output_t0
-
-        sink_IDs_t0 = sink_data_t0['ParticleIDs']
-        sink_mass_t0 = sink_data_t0['Masses'] * SFE
-        sink_pos_t0 = sink_data_t0['Coordinates']
-
-        sink_R_t0 = np.sqrt( (sink_pos_t0[:,0] - center[0])**2 + (sink_pos_t0[:,1] - center[1])**2 ) / 10
-        sink_z_t0 = sink_pos_t0[:,2] - 500
-
-        time_t0 = header_t0['Time'] * uMyr * 1e6
-
-        # load sink masses for time 1 and multiply by SFE. Also load in all sink IDs
-        t1 = number + 1
-        filenum_t1 = str(t1).zfill(3)
-        f_t1 = base + 'snap_' + str(filenum_t1) + '.hdf5'
-
-        output_t1 = rsnap.read_snapshot_hdf5(f_t1)
-        data_t1, header_t1, sink_data_t1 = output_t1
-
-        sink_IDs_t1 = sink_data_t1['ParticleIDs']
-        sink_mass_t1 = sink_data_t1['Masses'] * SFE
-        sink_pos_t1 = sink_data_t1['Coordinates']
-
-        sink_R_t1 = np.sqrt( (sink_pos_t1[:,0] - center[0])**2 + (sink_pos_t1[:,1] - center[1])**2 )
-        sink_z_t1 = sink_pos_t1[:,2] - 500
-
-        time_t1 = header_t1['Time'] * uMyr * 1e6
-        #plot_times[j] = time_t1
-
-        #defining sink_extract_t0
-        sink_extract_t0 = np.where((np.abs(sink_R_t0) > cut_R_inner) & (np.abs(sink_R_t0) < cut_R_outer) & (np.abs(sink_z_t0) < cut_z))
-        sink_IDs_cut_t0 = sink_IDs_t0[sink_extract_t0]
-        sink_mass_cut_t0 = sink_mass_t0[sink_extract_t0]
-        sink_pos_cut_t0 = sink_pos_t0[sink_extract_t0]
-        
-        #option to only include young sinks t0
-        if young_sinks_only == True: 
-            sink_file_t0 = base + 'sink_snap_' + filenum_t0
-            print(sink_file_t0)
-            sink_output_t1 = rsnap.read_sink_snap(sink_file_t0)
-            sink_out_t0 = sink_output_t0[0]
-            
-            time_of_formation_myr_t0 = sink_out_0['formationTime'] * uMyr
-            sink_age_t0 = (time_t0*uMyr) - time_of_formation_myr_t0
-            young_sink_mask_t0 = np.where(sink_age_t0 < sink_age_threshold)[0]
-            
-            sink_IDs_cut_t0 = sink_IDs_t0[young_sink_mask_t0]
-            sink_mass_cut_t0 = sink_mass_t0[young_sink_mask_t0]
-            sink_pos_cut_t0 = sink_pos_t0[young_sink_mask_t0]
-
-        #defining sink_extract_t1
-        sink_extract_t1 = np.where((np.abs(sink_R_t1) > cut_R_inner) & (np.abs(sink_R_t1) < cut_R_outer) & (np.abs(sink_z_t1) < cut_z))
-        sink_IDs_cut_t1 = sink_IDs_t1[sink_extract_t1]
-        sink_mass_cut_t1 = sink_mass_t1[sink_extract_t1]
-        sink_pos_cut_t1 = sink_pos_t1[sink_extract_t1]
-        
-        #option to only include young sinks t1
-        if young_sinks_only == True: 
-            sink_file_t1 = base + 'sink_snap_' + filenum_t1
-            print(sink_file_t1)
-            sink_output_t1 = rsnap.read_sink_snap(sink_file_t1)
-            sink_out_t1 = sink_output_t1[0]
-            
-            time_of_formation_myr_t1 = sink_out_1['formationTime'] * uMyr
-            sink_age_t1 = (time_t1*uMyr) - time_of_formation_myr_t1
-            young_sink_mask_t1 = np.where(sink_age_t1 < sink_age_threshold)[0]
-            
-            sink_IDs_cut_t1 = sink_IDs_t1[young_sink_mask_t1]
-            sink_mass_cut_t1 = sink_mass_t1[young_sink_mask_t1]
-            sink_pos_cut_t1 = sink_pos_t1[young_sink_mask_t1]
-
-        #net = net_increase(sink_IDs_cut_t0, sink_IDs_cut_t1, sink_mass_cut_t0, sink_mass_cut_t1)
-        new_sinks_mass, accreted_sinks_mass, new_sinks_positions, accreted_sinks_positions = net_increase_with_positions(sink_IDs_cut_t0, sink_IDs_cut_t1,
-                                                                                              sink_mass_cut_t0, sink_mass_cut_t1, sink_pos_cut_t0, sink_pos_cut_t1)
-        
-        # Calculate SFR at each sink particle's position
-        time_elapsed = time_t1 - time_t0
-        SFR_new_sinks = new_sinks_mass / time_elapsed
-        SFR_accreted_sinks = accreted_sinks_mass / time_elapsed
-
-        #convert positions into kpc space
-        kpc_new_sinks = (new_sinks_positions - 500) / 10.
-        kpc_accreted_sinks = (accreted_sinks_positions - 500) / 10.
-
-        # Combine positions and SFR values for new and accreted sinks into a 2D array
         SFR_pos_new = np.column_stack((SFR_new_sinks, kpc_new_sinks))
         SFR_pos_accreted = np.column_stack((SFR_accreted_sinks, kpc_accreted_sinks))
 
@@ -906,26 +828,24 @@ def calculate_sfr_with_pos(base, number, young_sinks_only=False, sink_age_thresh
     
     else:
         print('No stars formed yet! Choose a later snapshot')
-'''
+
         
 '''
-def calculate_sfr_surface_density(SFRs, SFR_positions, x_bins, y_bins):
-    
-    # Define positions and SFR values 
-    x_SFR = SFR_positions[:,0]        #position of SFR
-    y_SFR = SFR_positions[:,1]
-    SFR = SFRs      #SFR at given x,y
-    
-    # Calculate 2D histogram for SFR
-    SFR_histogram, xedges, yedges = np.histogram2d(x_SFR, y_SFR, bins=[x_bins, y_bins], weights=SFR)
-    
-    # Calculate bin areas
-    bin_areas = np.diff(xedges)[:, np.newaxis] * np.diff(yedges)[np.newaxis, :]
-    
-    # Calculate SFR surface density
-    SFR_surface_density = SFR_histogram / bin_areas
-    
-    return SFR_surface_density
+#useful illustration with test data of how the stacking works
+
+SFR_1 = 5
+kpc_1 = np.array([[1, 2, 3]])
+
+SFR_2 = 10
+kpc_2 = np.array([[7, 8, 9]])
+
+# Combine positions and SFR values for new and accreted sinks into a 2D array
+SFR_pos_new = np.column_stack((SFR_1, kpc_1))
+SFR_pos_accreted = np.column_stack((SFR_2, kpc_2))
+
+# Combine the two sets of positions and SFR values
+SFR_pos_combined = np.vstack((SFR_pos_new, SFR_pos_accreted))
+print(SFR_pos_combined)
 '''
 
 def calculate_sfr_surface_density(SFR_with_pos, x_bins, y_bins):
@@ -947,7 +867,7 @@ def calculate_sfr_surface_density(SFR_with_pos, x_bins, y_bins):
     return SFR_surface_density
 
 
-def calculate_gas_surface_density(pos_kpc, mass, x_bins, y_bins):
+def calculate_gas_surface_density(pos_kpc, mass, x_bins, y_bins): #bins should also be in kpc
 
     # Calculate 2D histogram for gas density
     gas_histogram, xedges, yedges = np.histogram2d(pos_kpc[:, 0], pos_kpc[:, 1], bins=[x_bins, y_bins], weights=mass)
