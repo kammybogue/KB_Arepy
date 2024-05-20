@@ -1,6 +1,6 @@
 ### TODO:  - change xcent, ycent, zcent to indexes of centre (default param)
 #          - seperate out below functions into seperate files (load, plot, utils) rather than them all being in utils
-#          - 
+#          - write more extensive docstrings for functions
 
 # AUTHOR; KAMRAN R J BOGUE #
 
@@ -10,7 +10,6 @@ import matplotlib.colors as mc
 
 import arepy.read_write.binary_read as rsnap
 from arepy.utility import cgs_constants as cgs
-
 
 
 ########### ########## ########### ########## GLOBAL PARAMETERS / CONFIGURATION ########## ########## ########### ##########
@@ -31,7 +30,6 @@ uMyr=utime/(60.*60.*24.*365.25*1.e6)
 uparsec=ulength/3.0856e18
 
 
-
 ########### ########## ########### ########## LOADING DATA FUNCTIONS ########## ########## ########### ##########
 
 def load_data(base, filenum, ABHE=0.1, read_snap=True):
@@ -43,7 +41,7 @@ def load_data(base, filenum, ABHE=0.1, read_snap=True):
 
     NH = ((ColumnDensity * rsnap.arepoColumnDensity) / ((1. + 4. * ABHE) * cgs.mp))
     Ndensity = NH * (1. + ABHE - xH2_proj + xHp_proj)
-    
+
     B_field = rsnap.read_vector_image(base + 'magnetic_proj_' + filenum)
     
     if read_snap==True:
@@ -82,15 +80,14 @@ def load_data(base, filenum, ABHE=0.1, read_snap=True):
         return Ndensity, B_field, xHp_proj, xH2_proj, NH
 
 
-def load_snap_data(base, filenum, ABHE=0.1, xHe=0.1, mp=1.6726231e-24, kb=1.3806485e-16, **kwargs): 
+def load_snap_data(base, filenum, xHe=0.1, mp=1.6726231e-24, kb=1.3806485e-16, **kwargs): 
     """ 
     Loads snapshot data from a specified file, doesn't load the projections.
 
     Parameters:
     - base (str): The base path to the snapshot files.
     - filenum (str): The snapshot number to load.
-    - ABHE (float, optional): The abundance of helium in the system. Default is 0.1.
-    - xHe (float, optional): The
+    - xHe (float, optional): The relative abundance of helium. Default is 0.1.
     - mp (float, optional): The proton mass in grams. Default is 1.6726231e-24.
     - kb (float, optional): The Boltzmann constant in erg per Kelvin. Default is 1.3806485e-16.
     - **kwargs: Additional keyword arguments for future expansion.
@@ -114,7 +111,6 @@ def load_snap_data(base, filenum, ABHE=0.1, xHe=0.1, mp=1.6726231e-24, kb=1.3806
     print("loading data from;",f)
     
     # Print used kwarg values
-    print("using ABHE = ", ABHE)
     print("using xHe = ", xHe)
     #print("using mp = ", mp) #these should not change
     #print("using kb = ", kb)
@@ -177,8 +173,7 @@ def load_snap_data(base, filenum, ABHE=0.1, xHe=0.1, mp=1.6726231e-24, kb=1.3806
 
     return mass, pos, rho, bfield, yn, T, vels, chem, time
 
-
-    
+   
 ########### ########## ########### ########## PLOTTING FUNCTIONS ########## ########## ########### ##########
 
 def plot_surface_density(Ndensity, SSx, SSy, time, fig, ax):
@@ -239,7 +234,6 @@ def plot_edge_density(Ndensity_edge, time, ax):
     plt.grid(b=True, which='major', axis='both')
 
 
-    
 ########### ########## ########### ########## GENERAL UTILITY FUNCTIONS ########## ########## ########### ##########
 
 #David's function
@@ -829,7 +823,7 @@ def calculate_sfr_with_pos(base, number, young_sinks_only=False, sink_age_thresh
     else:
         print('No stars formed yet! Choose a later snapshot')
 
-        
+
 '''
 #useful illustration with test data of how the stacking works
 
@@ -925,3 +919,160 @@ def filter_zero_values(gas_surface_density, SFR_surface_density):
     #print("Length of HD SFR surface density array after filtering:", len(filtered_SFR_surface_density))
 
     return filtered_gas_surface_density, filtered_SFR_surface_density
+
+
+########### ########## ########### ########## HRO UTILITY FUNCTIONS ########## ########## ########### ##########
+
+def compute_parameters_for_region(snap_base, number, snap_data, tile_params, **kwargs):
+    
+    """
+    Computes various key parameters for a specific tile region within a snapshot.
+
+    Parameters:
+    - snap_data (tuple): A tuple containing snapshot data including total_mass, total_pos, total_rho,
+      total_bfield, total_yn, total_T, total_vels, total_chem, and total_time.
+    - tile_params (tuple): A tuple containing parameters defining the region of interest: tile_x, tile_y, and cut_z.
+    - **kwargs: Additional keyword arguments.
+
+    Returns:
+    - corner_coord (tuple): The bottom left corner coordinates (x, y) of the specified tile.
+    - tile_rho_cgs_global (float): Global gas density in g/cm^3 within the tile.
+    - tile_rho_cgs_median (float): Median gas density in g/cm^3 within the tile.
+    - tile_abs_bfield_median (float): Median absolute magnetic field strength in micro Gauss within the tile.
+    - tile_T_median (float): Median temperature in Kelvin within the tile.
+    - tile_gas_surface_density_global (float): Global gas surface density in solar masses per square parsec within the tile.
+    - tile_gas_surface_density_median (float): Median gas surface density in solar masses per square parsec within the tile.
+    - tile_SFR_surface_density_median (float): Median star formation rate surface density in solar masses per year per square kiloparsec within the tile.
+    """
+    
+    #decompose snap data into individual parameters
+    total_mass, total_pos, total_rho, total_bfield, total_yn, total_T, total_vels, total_chem, total_time = snap_data
+    
+    #extract tile parametrs from input
+    tile_x, tile_y, cut_z = tile_params
+    corner_coord = tile_x[0], tile_y[0]
+    
+    ################ ################ tile extraction ################ ################
+    
+    # define iextract for the specific tile 
+    total_pos_kpc = (total_pos - 500) / 10. #convert positions to kpc space
+
+    tile_extract = np.where((total_pos_kpc[:,0] > tile_x[0]) & (total_pos_kpc[:,0] < tile_x[1]) \
+                            & (total_pos_kpc[:,1] > tile_y[0]) & (total_pos_kpc[:,1] < tile_y[1]) \
+                            & (total_pos_kpc[:,2] > cut_z[0]) & (total_pos_kpc[:,2] < cut_z[1]))
+
+    tile_mass = total_mass[tile_extract]
+    tile_pos = total_pos[tile_extract]
+    tile_pos_kpc = (tile_pos - 500) / 10. #convert positions to kpc space
+    tile_rho = total_rho[tile_extract]
+    tile_bfield = total_bfield[tile_extract]
+    tile_yn = total_yn[tile_extract]
+    tile_T = total_T[tile_extract]
+    tile_vels = total_vels[tile_extract]
+    tile_chem = total_chem[tile_extract]
+    
+    ################  ################ compute values for catalogue ################ ################
+    
+    #define tile parameters - note this assumes square tiles
+    tile_xy_size = np.abs(tile_x[1] - tile_x[0]) * 10 #in code units, i.e tile_xy_size=25 means 25 * 100 pc = 2500pc (2.5kpc)
+    tile_z_size = np.abs(cut_z[1] - cut_z[0]) * 10
+    tile_volume = (tile_xy_size**2) * tile_z_size
+
+    ################ standard 3D values from snapshot data ################
+
+    #densities
+    tile_rho_cgs_global = (np.sum(tile_mass) / tile_volume) * udensity #in gcm^-3
+    tile_rho_cgs_median = np.median(tile_rho * udensity) #in gcm^-3
+
+    #median field strength
+    tile_abs_bfield_median = np.median(np.sqrt(tile_bfield[:,0]**2 + tile_bfield[:,1]**2 + tile_bfield[:,2]**2)) * umag *  1e6 #in microG
+
+    #median temp
+    tile_T_median = np.median(tile_T) #in Kelvin
+
+    #chemical abundances
+    tile_xH2, tile_xHp, tile_xCO = tile_chem.T
+    tile_xHI = 1 - tile_xHp - 2*tile_xH2    #abundance of HI from conservation laws
+    #compute averages etc here if want to inlcude chemical data in catalogue
+
+    ################ 2D values from binning snapshot data ################
+
+    # Define spatial bins for gas SD and SF SD calculations
+    x_bins = np.linspace(tile_x[0], tile_x[1], num=5)  # Adjust the number of bins as needed
+    y_bins = np.linspace(tile_y[0], tile_y[1], num=5)  
+
+    #mean gas SD
+    tile_gas_surface_density_global = np.sum(tile_mass) / ((tile_xy_size*100)**2) #for surface density (not volume density) in solar mases per sq pc
+    tile_gas_surface_density = calculate_gas_surface_density(tile_pos_kpc, tile_mass, x_bins, y_bins) #in solar mases per sq pc
+    tile_gas_surface_density_median = np.median(tile_gas_surface_density)
+
+    #SFR SD
+    total_SFR_with_pos = calculate_sfr_with_pos(snap_base, number, young_sinks_only=False, **kwargs)
+    #total_SFR_surface_density = utils.calculate_sfr_surface_density(total_SFRs, total_SFR_positions, x_bins, y_bins) #in solar mases per yr per sq kpc 
+
+    tile_SFR_extract = np.where((total_SFR_with_pos[:,1] > tile_x[0]) & (total_SFR_with_pos[:,1] < tile_x[1]) \
+                            & (total_SFR_with_pos[:,2] > tile_y[0]) & (total_SFR_with_pos[:,2] < tile_y[1]) \
+                            & (total_SFR_with_pos[:,3] > cut_z[0]) & (total_SFR_with_pos[:,3] < cut_z[1]))
+
+    tile_SFR_with_pos = total_SFR_with_pos[tile_SFR_extract]
+
+    tile_SFR_surface_density = calculate_sfr_surface_density(tile_SFR_with_pos, x_bins, y_bins) #in solar mases per yr per sq kpc 
+    tile_SFR_surface_density_median = np.median(tile_SFR_surface_density)
+    
+    return corner_coord, tile_rho_cgs_global, tile_rho_cgs_median, tile_abs_bfield_median, tile_T_median, tile_gas_surface_density_global, tile_gas_surface_density_median, tile_SFR_surface_density_median
+
+################ standard HRO plot ################
+
+def HRO_plot(hros, bin_edges, color, outh, dsteps):
+    #make the figure bigger
+    fig_size = plt.rcParams["figure.figsize"]
+    fig_size[0]=8
+    fig_size[1]=8
+    plt.rcParams["figure.figsize"] = fig_size
+
+    bin_centre=0.5*(bin_edges[0:np.size(bin_edges)-1]+bin_edges[1:np.size(bin_edges)])
+
+    outsteps = np.size(outh)
+
+    fig      = plt.figure()
+    for i in range(0, outsteps):
+        c         = next(color)
+        labeltext = str(np.round(dsteps[outh[i]],2))+' < n < '+str(np.round(dsteps[outh[i]+1],2)) 
+        plt.plot(bin_centre, hros[outh[i],:], '-', linewidth=2, c=c, label=labeltext) #drawstyle
+    plt.xlabel(r'cos($\phi$)', fontsize=16)	
+    plt.ylabel(r'normalised counts', fontsize=16)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.legend(fontsize=14)
+    plt.grid(linestyle='--', alpha=0.7)
+    plt.show()
+
+################ HRO Xi plot ################       
+
+def HRO_xi_plot(cdens, xi, color):
+    fig = plt.figure(figsize=(8.0,4.0))
+    plt.rc('font', size=10)
+    ax1=plt.subplot(111)
+    ax1.semilogx(cdens, xi, 'o-', linewidth=2, color=color)
+    ax1.axhline(y=0., c='k', ls='--')	
+    ax1.set_xlabel(r'log$_{10}$ ($n_{\rm H}/$cm$^{-3}$)')
+    ax1.set_ylabel(r'$\xi$')
+    plt.show()
+
+################ Make grid plot of all tiles ################   
+    
+def combine_images_into_grid(images, grid_size=(5, 5)):
+    # images should be a list of NumPy arrays of shape (H, W) where H and W are the height and width.
+
+    # Create a new array to hold the combined image
+    grid_height, grid_width = images[0].shape[0] * grid_size[0], images[0].shape[1] * grid_size[1]
+    combined_image = np.zeros((grid_height, grid_width), dtype=images[0].dtype)
+
+    # Paste each image into the correct location in the combined array
+    for i in range(grid_size[0]):
+        for j in range(grid_size[1]):
+            index = i * grid_size[1] + j
+            combined_image[i * images[index].shape[0]:(i + 1) * images[index].shape[0],
+                           j * images[index].shape[1]:(j + 1) * images[index].shape[1]] = images[index]
+
+    return combined_image
